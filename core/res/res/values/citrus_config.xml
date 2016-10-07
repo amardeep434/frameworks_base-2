@@ -25,4 +25,7 @@
     <!-- The list of components which should be forced to be enabled. -->
     <string-array name="config_forceEnabledComponents" translatable="false">
     </string-array>
+
+    <!-- Bool whether to show Hardware keys settings in Custom Squash -->
+    <bool name="config_showHwKeys">false</bool>
 </resources>
