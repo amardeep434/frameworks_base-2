@@ -177,6 +177,8 @@ public final class PowerManagerService extends SystemService
     private static final int HALT_MODE_REBOOT = 1;
     private static final int HALT_MODE_REBOOT_SAFE_MODE = 2;
 
+    private static final int BUTTON_ON_DURATION = 5 * 1000;
+
     private final Context mContext;
     private final ServiceThread mHandlerThread;
     private final PowerManagerHandler mHandler;
@@ -192,6 +194,7 @@ public final class PowerManagerService extends SystemService
     private SettingsObserver mSettingsObserver;
     private DreamManagerInternal mDreamManager;
     private Light mAttentionLight;
+    private Light mButtonsLight;
 
     private final Object mLock = new Object();
 
@@ -385,6 +388,9 @@ public final class PowerManagerService extends SystemService
     // The stay on while plugged in setting.
     // A bitfield of battery conditions under which to make the screen stay on.
     private int mStayOnWhilePluggedInSetting;
+
+    // True if the device should wake up when plugged or unplugged
+    private int mWakeUpWhenPluggedOrUnpluggedSetting;
 
     // True if the device should stay on.
     private boolean mStayOn;
@@ -588,6 +594,7 @@ public final class PowerManagerService extends SystemService
 
             mLightsManager = getLocalService(LightsManager.class);
             mAttentionLight = mLightsManager.getLight(LightsManager.LIGHT_ID_ATTENTION);
+            mButtonsLight = mLightsManager.getLight(LightsManager.LIGHT_ID_BUTTONS);
 
             // Initialize display power management.
             mDisplayManagerInternal.initPowerManagement(
@@ -655,6 +662,9 @@ public final class PowerManagerService extends SystemService
                     false, mSettingsObserver, UserHandle.USER_ALL);
             resolver.registerContentObserver(Settings.Secure.getUriFor(
                     Secure.BRIGHTNESS_USE_TWILIGHT),
+                    false, mSettingsObserver, UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.Global.getUriFor(
+                    Settings.Global.WAKE_WHEN_PLUGGED_OR_UNPLUGGED),
                     false, mSettingsObserver, UserHandle.USER_ALL);
             IVrManager vrManager =
                     (IVrManager) getBinderService(VrManagerService.VR_MANAGER_BINDER_SERVICE);
@@ -737,6 +747,9 @@ public final class PowerManagerService extends SystemService
                 Settings.Global.STAY_ON_WHILE_PLUGGED_IN, BatteryManager.BATTERY_PLUGGED_AC);
         mTheaterModeEnabled = Settings.Global.getInt(mContext.getContentResolver(),
                 Settings.Global.THEATER_MODE_ON, 0) == 1;
+        mWakeUpWhenPluggedOrUnpluggedSetting = Settings.Global.getInt(resolver,
+                Settings.Global.WAKE_WHEN_PLUGGED_OR_UNPLUGGED,
+                (mWakeUpWhenPluggedOrUnpluggedConfig ? 1 : 0));
 
         if (mSupportsDoubleTapWakeConfig) {
             boolean doubleTapWakeEnabled = Settings.Secure.getIntForUser(resolver,
@@ -1452,10 +1465,18 @@ public final class PowerManagerService extends SystemService
                 userActivityNoUpdateLocked(
                         now, PowerManager.USER_ACTIVITY_EVENT_OTHER, 0, Process.SYSTEM_UID);
 
-                // Tell the notifier whether wireless charging has started so that
-                // it can provide feedback to the user.
-                if (dockedOnWirelessCharger) {
-                    mNotifier.onWirelessChargingStarted();
+                if (mPlugType == BatteryManager.BATTERY_PLUGGED_WIRELESS ||
+                        oldPlugType == BatteryManager.BATTERY_PLUGGED_WIRELESS) {
+                    // Tell the notifier whether wireless charging has started so that
+                    // it can provide feedback to the user.
+                    if (dockedOnWirelessCharger) {
+                        mNotifier.onWirelessChargingStarted();
+                    }
+                } else {
+                    // anything wired is now plugged
+                    if (!wasPowered && mIsPowered) {
+                        mNotifier.onWiredChargingStarted();
+                    }
                 }
             }
 
@@ -1474,7 +1495,7 @@ public final class PowerManagerService extends SystemService
     private boolean shouldWakeUpWhenPluggedOrUnpluggedLocked(
             boolean wasPowered, int oldPlugType, boolean dockedOnWirelessCharger) {
         // Don't wake when powered unless configured to do so.
-        if (!mWakeUpWhenPluggedOrUnpluggedConfig) {
+        if (mWakeUpWhenPluggedOrUnpluggedSetting == 0) {
             return false;
         }
 
@@ -1629,6 +1650,12 @@ public final class PowerManagerService extends SystemService
                     nextTimeout = mLastUserActivityTime
                             + screenOffTimeout - screenDimDuration;
                     if (now < nextTimeout) {
+                        if (now > mLastUserActivityTime + BUTTON_ON_DURATION) {
+                            mButtonsLight.setBrightness(0);
+                        } else {
+                            mButtonsLight.setBrightness(mDisplayPowerRequest.screenBrightness);
+                            nextTimeout = now + BUTTON_ON_DURATION;
+                        }
                         mUserActivitySummary = USER_ACTIVITY_SCREEN_BRIGHT;
                     } else {
                         nextTimeout = mLastUserActivityTime + screenOffTimeout;

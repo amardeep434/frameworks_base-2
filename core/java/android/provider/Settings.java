@@ -69,11 +69,14 @@ import com.android.internal.widget.ILockSettings;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * The Settings provider contains global system-level device preferences.
@@ -1869,6 +1872,44 @@ public final class Settings {
             }
         };
 
+        /**
+         * Put a delimited list as a string
+         * @param resolver to access the database with
+         * @param name to store
+         * @param delimiter to split
+         * @param list to join and store
+         * @hide
+         */
+        public static void putListAsDelimitedString(ContentResolver resolver, String name,
+                                                    String delimiter, List<String> list) {
+            String store = TextUtils.join(delimiter, list);
+            putString(resolver, name, store);
+        }
+
+        /**
+         * Get a delimited string returned as a list
+         * @param resolver to access the database with
+         * @param name to store
+         * @param delimiter to split the list with
+         * @return list of strings for a specific Settings.Secure item
+         * @hide
+         */
+        public static List<String> getDelimitedStringAsList(ContentResolver resolver, String name,
+                                                            String delimiter) {
+            String baseString = getString(resolver, name);
+            List<String> list = new ArrayList<String>();
+            if (!TextUtils.isEmpty(baseString)) {
+                final String[] array = TextUtils.split(baseString, Pattern.quote(delimiter));
+                for (String item : array) {
+                    if (TextUtils.isEmpty(item)) {
+                        continue;
+                    }
+                    list.add(item);
+                }
+            }
+            return list;
+        }
+
         /** @hide */
         public static void getMovedToGlobalSettings(Set<String> outKeySet) {
             outKeySet.addAll(MOVED_TO_GLOBAL);
@@ -2023,6 +2064,32 @@ public final class Settings {
         }
 
         /**
+         * @hide
+         * Convenience function for retrieving a single system settings value
+         * as a boolean.  Note that internally setting values are always
+         * stored as strings; this function converts the string to a boolean
+         * for you. It will only return true if the stored value is "1"
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to retrieve.
+         * @param def Value to return if the setting is not defined.
+         *
+         * @return The setting's current value, or 'def' if it is not defined
+         * or not a valid integer.
+         */
+        public static boolean getBoolean(ContentResolver cr, String name, boolean def) {
+            String v = getString(cr, name);
+            try {
+                if(v != null)
+                    return "1".equals(v);
+                else
+                    return def;
+            } catch (NumberFormatException e) {
+                return def;
+            }
+        }
+
+        /**
          * Convenience function for updating a single settings value as an
          * integer. This will either create a new entry in the table if the
          * given name does not exist, or modify the value of the existing row
@@ -2043,6 +2110,24 @@ public final class Settings {
         public static boolean putIntForUser(ContentResolver cr, String name, int value,
                 int userHandle) {
             return putStringForUser(cr, name, Integer.toString(value), userHandle);
+        }
+
+        /**
+         * @hide
+         * Convenience function for updating a single settings value as a
+         * boolean. This will either create a new entry in the table if the
+         * given name does not exist, or modify the value of the existing row
+         * with that name.  Note that internally setting values are always
+         * stored as strings, so this function converts the given value to a
+         * string (1 or 0) before storing it.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to modify.
+         * @param value The new value for the setting.
+         * @return true if the value was set, false on database errors
+         */
+        public static boolean putBoolean(ContentResolver cr, String name, boolean value) {
+            return putString(cr, name, value ? "1" : "0");
         }
 
         /**
@@ -2605,6 +2690,13 @@ public final class Settings {
 
         private static final Validator BLUETOOTH_DISCOVERABILITY_VALIDATOR =
                 new InclusiveIntegerRangeValidator(0, 2);
+
+        /**
+         * If all file types can be accepted over Bluetooth OBEX.
+         * @hide
+         */
+        public static final String BLUETOOTH_ACCEPT_ALL_FILES =
+            "bluetooth_accept_all_files";
 
         /**
          * Bluetooth discoverability timeout.  If this value is nonzero, then
@@ -3192,6 +3284,19 @@ public final class Settings {
         public static final Validator ACCELEROMETER_ROTATION_VALIDATOR = sBooleanValidator;
 
         /**
+         * Control the type of rotation which can be performed using the accelerometer
+         * if ACCELEROMETER_ROTATION is enabled.
+         * Value is a bitwise combination of
+         * 1 = 0 degrees (portrait)
+         * 2 = 90 degrees (left)
+         * 4 = 180 degrees (inverted portrait)
+         * 8 = 270 degrees (right)
+         * Setting to 0 is effectively orientation lock
+         * @hide
+         */
+        public static final String ACCELEROMETER_ROTATION_ANGLES = "accelerometer_rotation_angles";
+
+        /**
          * Default screen rotation when no other policy applies.
          * When {@link #ACCELEROMETER_ROTATION} is zero and no on-screen Activity expresses a
          * preference, this rotation value will be used. Must be one of the
@@ -3311,6 +3416,14 @@ public final class Settings {
         public static final Validator SHOW_WEB_SUGGESTIONS_VALIDATOR = sBooleanValidator;
 
         /**
+         * Whether to allow notifications with the screen on or DayDreams.
+         * The value is boolean (1 or 0). Default will always be false.
+         * @hide
+         */
+        public static final String NOTIFICATION_LIGHT_SCREEN_ON =
+                "notification_light_screen_on_enable";
+
+        /**
          * Whether the notification LED should repeatedly flash when a notification is
          * pending. The value is boolean (1 or 0).
          * @hide
@@ -3319,6 +3432,88 @@ public final class Settings {
 
         /** @hide */
         public static final Validator NOTIFICATION_LIGHT_PULSE_VALIDATOR = sBooleanValidator;
+
+        /**
+         * What color to use for the notification LED by default
+         * @hide
+         */
+        public static final String NOTIFICATION_LIGHT_PULSE_DEFAULT_COLOR =
+                "notification_light_pulse_default_color";
+
+        /**
+         * Whether we automatically generate notification LED colors or just
+         * use the boring default.
+         *
+         * @hide
+         */
+        public static final String NOTIFICATION_LIGHT_COLOR_AUTO =
+                "notification_light_color_auto";
+
+        /**
+         * How long to flash the notification LED by default
+         * @hide
+         */
+        public static final String NOTIFICATION_LIGHT_PULSE_DEFAULT_LED_ON =
+                "notification_light_pulse_default_led_on";
+
+        /**
+         * How long to wait between flashes for the notification LED by default
+         * @hide
+         */
+        public static final String NOTIFICATION_LIGHT_PULSE_DEFAULT_LED_OFF =
+                "notification_light_pulse_default_led_off";
+
+        /**
+         * Whether to use the custom LED values for the notification pulse LED.
+         * @hide
+         */
+        public static final String NOTIFICATION_LIGHT_PULSE_CUSTOM_ENABLE =
+                "notification_light_pulse_custom_enable";
+
+        /**
+         * Which custom LED values to use for the notification pulse LED.
+         * @hide
+         */
+        public static final String NOTIFICATION_LIGHT_PULSE_CUSTOM_VALUES =
+                "notification_light_pulse_custom_values";
+
+        /**
+         * Whether the battery light should be enabled (if hardware supports it)
+         * The value is boolean (1 or 0).
+         * @hide
+         */
+        public static final String BATTERY_LIGHT_ENABLED = "battery_light_enabled";
+
+        /**
+         * Whether the battery LED should repeatedly flash when the battery is low
+         * on charge. The value is boolean (1 or 0).
+         * @hide
+         */
+        public static final String BATTERY_LIGHT_PULSE = "battery_light_pulse";
+
+        /**
+         * What color to use for the battery LED while charging - low
+         * @hide
+         */
+        public static final String BATTERY_LIGHT_LOW_COLOR = "battery_light_low_color";
+
+        /**
+         * What color to use for the battery LED while charging - medium
+         * @hide
+         */
+        public static final String BATTERY_LIGHT_MEDIUM_COLOR = "battery_light_medium_color";
+
+        /**
+         * What color to use for the battery LED while charging - full
+         * @hide
+         */
+        public static final String BATTERY_LIGHT_FULL_COLOR = "battery_light_full_color";
+
+	/**
+         * What color to use for the battery LED while charging - really full (100%)
+         * @hide
+         */
+        public static final String BATTERY_LIGHT_REALLY_FULL_COLOR = "battery_light_really_full_color";
 
         /**
          * Show pointer location on screen?
@@ -3438,6 +3633,12 @@ public final class Settings {
         @Deprecated
         public static final String LOCK_SOUND = Global.LOCK_SOUND;
 
+         /**
+         * Whether the notification light will be allowed when in zen mode during downtime
+         * @hide
+         */
+        public static final String ALLOW_LIGHTS = "allow_lights";
+
         /**
          * @deprecated Use {@link android.provider.Settings.Global#UNLOCK_SOUND}
          * instead
@@ -3524,6 +3725,12 @@ public final class Settings {
         public static final Validator LOCK_TO_APP_ENABLED_VALIDATOR = sBooleanValidator;
 
         /**
+         * Enable/Disable screenshot sound
+         * @hide
+         */
+        public static final String SCREENSHOT_SOUND = "screenshot_sound";
+
+        /**
          * I am the lolrus.
          * <p>
          * Nonzero values indicate that the user has a bukkit.
@@ -3552,6 +3759,136 @@ public final class Settings {
          */
 
         /**
+         * Beginning of Cardinal-AOSP System Settings Additions
+         * @hide
+         */
+
+        /**
+         * Enable statusbar double tap gesture on to put device to sleep
+         * @hide
+         */
+        public static final String DOUBLE_TAP_SLEEP_GESTURE = "double_tap_sleep_gesture";
+
+        /**
+         * Whether to control brightness from status bar
+         * @hide
+         */
+        public static final String STATUS_BAR_BRIGHTNESS_CONTROL = "status_bar_brightness_control";
+
+        /**
+         * Volume rocker wake
+         * @hide
+         */
+        public static final String VOLUME_ROCKER_WAKE = "volume_rocker_wake";
+
+
+        /**
+         * Whether or not volume button music controls should be enabled to seek media tracks
+         * @hide
+         */
+        public static final String VOLUME_ROCKER_MUSIC_CONTROLS = "volume_rocker_music_controls";
+
+        /**
+         * Network traffic indicator, goes from least to greatest significant bitwise
+         * 0 = Display up-stream traffic if set
+         * 1 = Display down-stream traffic if set
+         * 2 = Show as Byte/s if set
+         * 16-31 = Refresh interval(ms) min: 250 max: 32750 default: 1000
+         * @hide
+         */
+        public static final String NETWORK_TRAFFIC_STATE = "network_traffic_state";
+
+        /**
+         * Network stats Color style
+         * @hide
+         */
+        public static final String NETWORK_TRAFFIC_COLOR = "network_traffic_color";
+
+        /**
+         * Whether or not to hide the network traffic indicator when there is no activity
+         * @hide
+         */
+        public static final String NETWORK_TRAFFIC_AUTOHIDE = "network_traffic_autohide";
+
+        /**
+         * Network traffic inactivity threshold (default is 10 kBs)
+         * @hide
+         */
+        public static final String NETWORK_TRAFFIC_AUTOHIDE_THRESHOLD = "network_traffic_autohide_threshold";
+
+        /**
+         * Whether to disable showing arrows in network traffic indicators
+         * @hide
+         */
+        public static final String NETWORK_TRAFFIC_HIDEARROW = "network_traffic_hidearrow";
+
+        /**
+         * Action to perform when the home key is long-pressed.
+         * (Default can be configured via config_longPressOnHomeBehavior)
+         * 0 - Nothing
+         * 1 - Menu
+         * 2 - App-switch
+         * 3 - Search
+         * 4 - Voice search
+         * 5 - In-app search
+         * 6 - Launch Camera
+         * 7 - Last app
+         * @hide
+         */
+        public static final String KEY_HOME_LONG_PRESS_ACTION = "key_home_long_press_action";
+
+        /**
+         * Action to perform when the home key is double-tapped.
+         * (Default can be configured via config_doubleTapOnHomeBehavior)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_HOME_DOUBLE_TAP_ACTION = "key_home_double_tap_action";
+
+        /**
+         * Action to perform when the menu key is pressed. (Default is 1)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_MENU_ACTION = "key_menu_action";
+
+        /**
+         * Action to perform when the menu key is long-pressed.
+         * (Default is 0 on devices with a search key, 3 on devices without)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_MENU_LONG_PRESS_ACTION = "key_menu_long_press_action";
+
+        /**
+         * Action to perform when the assistant (search) key is pressed. (Default is 3)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_ASSIST_ACTION = "key_assist_action";
+
+        /**
+         * Action to perform when the assistant (search) key is long-pressed. (Default is 4)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_ASSIST_LONG_PRESS_ACTION = "key_assist_long_press_action";
+
+        /**
+         * Action to perform when the app switch key is pressed. (Default is 2)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_APP_SWITCH_ACTION = "key_app_switch_action";
+
+        /**
+         * Action to perform when the app switch key is long-pressed. (Default is 0)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_APP_SWITCH_LONG_PRESS_ACTION = "key_app_switch_long_press_action";
+
+        /**
          * Settings to backup. This is here so that it's in the same place as the settings
          * keys and easy to update.
          *
@@ -3572,6 +3909,7 @@ public final class Settings {
             BLUETOOTH_DISCOVERABILITY,
             BLUETOOTH_DISCOVERABILITY_TIMEOUT,
             FONT_SCALE,
+            BLUETOOTH_ACCEPT_ALL_FILES,
             DIM_SCREEN,
             SCREEN_OFF_TIMEOUT,
             SCREEN_BRIGHTNESS,
@@ -3605,7 +3943,9 @@ public final class Settings {
             RINGTONE,
             LOCK_TO_APP_ENABLED,
             NOTIFICATION_SOUND,
-            ACCELEROMETER_ROTATION
+            ACCELEROMETER_ROTATION,
+            NOTIFICATION_LIGHT_SCREEN_ON,
+            ALLOW_LIGHTS
         };
 
         /**
@@ -4203,6 +4543,44 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.PREFERRED_NETWORK_MODE);
             MOVED_TO_GLOBAL.add(Settings.Global.WEBVIEW_DATA_REDUCTION_PROXY_KEY);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_AUTO_CONNECT_TYPE);
+        }
+
+        /**
+         * Put a delimited list as a string
+         * @param resolver to access the database with
+         * @param name to store
+         * @param delimiter to split
+         * @param list to join and store
+         * @hide
+         */
+        public static void putListAsDelimitedString(ContentResolver resolver, String name,
+                                                    String delimiter, List<String> list) {
+            String store = TextUtils.join(delimiter, list);
+            putString(resolver, name, store);
+        }
+
+        /**
+         * Get a delimited string returned as a list
+         * @param resolver to access the database with
+         * @param name to store
+         * @param delimiter to split the list with
+         * @return list of strings for a specific Settings.Secure item
+         * @hide
+         */
+        public static List<String> getDelimitedStringAsList(ContentResolver resolver, String name,
+                                                            String delimiter) {
+            String baseString = getString(resolver, name);
+            List<String> list = new ArrayList<String>();
+            if (!TextUtils.isEmpty(baseString)) {
+                final String[] array = TextUtils.split(baseString, Pattern.quote(delimiter));
+                for (String item : array) {
+                    if (TextUtils.isEmpty(item)) {
+                        continue;
+                    }
+                    list.add(item);
+                }
+            }
+            return list;
         }
 
         /** @hide */
@@ -8461,6 +8839,15 @@ public final class Settings {
         public static final String POLICY_CONTROL = "policy_control";
 
         /**
+         * Defines global runtime overrides to window policy.
+         *
+         * See {@link android.view.WindowManagerPolicyControl} for value format.
+         *
+         * @hide
+         */
+        public static final String POLICY_CONTROL_SELECTED = "policy_control_selected";
+
+        /**
          * Defines global zen mode.  ZEN_MODE_OFF, ZEN_MODE_IMPORTANT_INTERRUPTIONS,
          * or ZEN_MODE_NO_INTERRUPTIONS.
          *
@@ -8638,6 +9025,14 @@ public final class Settings {
          */
         public static final String SAFE_BOOT_DISALLOWED = "safe_boot_disallowed";
 
+
+       /**
+         * Whether to wake the display when plugging or unplugging the charger
+         *
+         * @hide
+         */
+        public static final String WAKE_WHEN_PLUGGED_OR_UNPLUGGED = "wake_when_plugged_or_unplugged";
+
         /**
          * Settings to backup. This is here so that it's in the same place as the settings
          * keys and easy to update.
@@ -8657,6 +9052,7 @@ public final class Settings {
         public static final String[] SETTINGS_TO_BACKUP = {
             BUGREPORT_IN_POWER_MENU,
             STAY_ON_WHILE_PLUGGED_IN,
+            WAKE_WHEN_PLUGGED_OR_UNPLUGGED,
             AUTO_TIME,
             AUTO_TIME_ZONE,
             POWER_SOUNDS_ENABLED,
@@ -8691,6 +9087,44 @@ public final class Settings {
         /** @hide */
         public static void getMovedToSecureSettings(Set<String> outKeySet) {
             outKeySet.addAll(MOVED_TO_SECURE);
+        }
+
+        /**
+         * Put a delimited list as a string
+         * @param resolver to access the database with
+         * @param name to store
+         * @param delimiter to split
+         * @param list to join and store
+         * @hide
+         */
+        public static void putListAsDelimitedString(ContentResolver resolver, String name,
+                                                    String delimiter, List<String> list) {
+            String store = TextUtils.join(delimiter, list);
+            putString(resolver, name, store);
+        }
+
+        /**
+         * Get a delimited string returned as a list
+         * @param resolver to access the database with
+         * @param name to store
+         * @param delimiter to split the list with
+         * @return list of strings for a specific Settings.Secure item
+         * @hide
+         */
+        public static List<String> getDelimitedStringAsList(ContentResolver resolver, String name,
+                                                            String delimiter) {
+            String baseString = getString(resolver, name);
+            List<String> list = new ArrayList<String>();
+            if (!TextUtils.isEmpty(baseString)) {
+                final String[] array = TextUtils.split(baseString, Pattern.quote(delimiter));
+                for (String item : array) {
+                    if (TextUtils.isEmpty(item)) {
+                        continue;
+                    }
+                    list.add(item);
+                }
+            }
+            return list;
         }
 
         /**
